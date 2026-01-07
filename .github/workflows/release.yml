@@ -260,3 +260,4 @@ jobs:
           asset_path: ./${{ matrix.extension_name }}-${{ github.ref_name }}-pg${{ matrix.postgres }}-x86_64-alma9.rpm
           asset_name: ${{ matrix.extension_name }}-${{ github.ref_name }}-pg${{ matrix.postgres }}-x86_64-alma9.rpm
           asset_content_type: application/x-rpm
+
