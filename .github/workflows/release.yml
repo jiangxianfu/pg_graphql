@@ -145,3 +145,118 @@ jobs:
           asset_path: ./${{ matrix.extension_name }}-${{ github.ref_name }}-pg${{ matrix.postgres }}-${{ matrix.box.arch }}-linux-gnu.deb
           asset_name: ${{ matrix.extension_name }}-${{ github.ref_name }}-pg${{ matrix.postgres }}-${{ matrix.box.arch }}-linux-gnu.deb
           asset_content_type: application/vnd.debian.binary-package
+
+  build-alma9-rpm:
+    name: release rpm artifacts for AlmaLinux 9
+    needs:
+      - release
+    strategy:
+      matrix:
+        extension_name:
+          - pg_graphql
+        package_name:
+          - pg-graphql
+        pgrx_version:
+          - 0.16.1
+        postgres: [14, 15, 16, 17, 18]
+    runs-on: ubuntu-latest
+    container:
+      image: almalinux:9
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: build rpm release artifacts
+        run: |
+          # Install basic tools
+          dnf install -y wget git gcc gcc-c++ make cmake rpm-build rpmdevtools
+
+          # Add PostgreSQL repository
+          dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+
+          # Disable PostgreSQL module to use PGDG packages
+          dnf -qy module disable postgresql
+
+          # Install PostgreSQL development packages
+          dnf install -y postgresql${{ matrix.postgres }}-server postgresql${{ matrix.postgres }}-devel
+
+          # Install additional dependencies
+          dnf install -y openssl-devel readline-devel zlib-devel libxml2-devel libxslt-devel clang-devel pkg-config
+
+          # Ensure installed pg_config is first on path
+          export PATH=/usr/pgsql-${{ matrix.postgres }}/bin:$PATH
+
+          # Install Rust
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+          source "$HOME/.cargo/env"
+
+          rustup --version
+          rustc --version
+          cargo --version
+
+          # Install cargo-pgrx
+          cargo install cargo-pgrx --version ${{ matrix.pgrx_version }} --locked
+          cargo pgrx init --pg${{ matrix.postgres }}=/usr/pgsql-${{ matrix.postgres }}/bin/pg_config
+
+          # Build the extension
+          cargo pgrx package --pg-config /usr/pgsql-${{ matrix.postgres }}/bin/pg_config --no-default-features --features pg${{ matrix.postgres }}
+
+          # Create installable package
+          mkdir -p archive
+          cp `find target/release -type f -name "${{ matrix.extension_name }}*"` archive
+
+          # Setup RPM build environment
+          rpmdev-setuptree
+
+          # Prepare version
+          extension_version="${{ github.ref_name }}"
+          rpm_version=${extension_version:1}  # strip the leading v
+
+          # Create RPM spec file
+          cat > ~/rpmbuild/SPECS/${{ matrix.package_name }}.spec <<EOF
+          Name:           ${{ matrix.package_name }}
+          Version:        ${rpm_version}
+          Release:        1%{?dist}
+          Summary:        A PostgreSQL extension
+          License:        Apache-2.0
+          URL:            https://github.com/${{ github.repository }}
+
+          %description
+          A PostgreSQL extension built with pgrx
+
+          %install
+          mkdir -p %{buildroot}/usr/pgsql-${{ matrix.postgres }}/lib
+          mkdir -p %{buildroot}/usr/pgsql-${{ matrix.postgres }}/share/extension
+
+          cp ${GITHUB_WORKSPACE}/archive/*.so %{buildroot}/usr/pgsql-${{ matrix.postgres }}/lib/
+          cp ${GITHUB_WORKSPACE}/archive/*.control %{buildroot}/usr/pgsql-${{ matrix.postgres }}/share/extension/
+          cp ${GITHUB_WORKSPACE}/archive/*.sql %{buildroot}/usr/pgsql-${{ matrix.postgres }}/share/extension/
+
+          %files
+          /usr/pgsql-${{ matrix.postgres }}/lib/*.so
+          /usr/pgsql-${{ matrix.postgres }}/share/extension/${{ matrix.extension_name }}.control
+          /usr/pgsql-${{ matrix.postgres }}/share/extension/${{ matrix.extension_name }}*.sql
+
+          %changelog
+          * $(date "+%a %b %d %Y") Supabase <support@supabase.io> - ${rpm_version}-1
+          - Release ${rpm_version}
+          EOF
+
+          # Build RPM package
+          rpmbuild -bb ~/rpmbuild/SPECS/${{ matrix.package_name }}.spec
+
+          # Copy the RPM to workspace
+          cp ~/rpmbuild/RPMS/x86_64/${{ matrix.package_name }}-${rpm_version}-1.el9.x86_64.rpm ./${{ matrix.extension_name }}-${{ github.ref_name }}-pg${{ matrix.postgres }}-x86_64-alma9.rpm
+
+      - name: Get upload url
+        run: echo UPLOAD_URL=$(curl --silent https://api.github.com/repos/${{ github.repository }}/releases/latest | jq .upload_url --raw-output) >> $GITHUB_ENV
+
+      - name: Upload rpm release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ env.UPLOAD_URL }}
+          asset_path: ./${{ matrix.extension_name }}-${{ github.ref_name }}-pg${{ matrix.postgres }}-x86_64-alma9.rpm
+          asset_name: ${{ matrix.extension_name }}-${{ github.ref_name }}-pg${{ matrix.postgres }}-x86_64-alma9.rpm
+          asset_content_type: application/x-rpm
