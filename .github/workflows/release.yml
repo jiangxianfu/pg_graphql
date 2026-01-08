@@ -170,7 +170,7 @@ jobs:
         run: |
           # Install basic tools
           
-          dnf install epel-release
+          dnf install -y epel-release
           dnf config-manager --set-enabled crb
 
           dnf install -y wget git gcc gcc-c++ make cmake rpm-build rpmdevtools
