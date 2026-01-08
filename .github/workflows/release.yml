@@ -173,7 +173,7 @@ jobs:
           dnf install -y epel-release
           dnf config-manager --set-enabled crb
 
-          dnf install -y wget git gcc gcc-c++ make cmake rpm-build rpmdevtools
+          dnf install -y wget git gcc gcc-c++ make cmake rpm-build rpmdevtools jq
 
           # Add PostgreSQL repository
           dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
@@ -264,4 +264,5 @@ jobs:
           asset_path: ./${{ matrix.extension_name }}-${{ github.ref_name }}-pg${{ matrix.postgres }}-x86_64-alma9.rpm
           asset_name: ${{ matrix.extension_name }}-${{ github.ref_name }}-pg${{ matrix.postgres }}-x86_64-alma9.rpm
           asset_content_type: application/x-rpm
+      
 
