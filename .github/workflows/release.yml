@@ -169,6 +169,10 @@ jobs:
       - name: build rpm release artifacts
         run: |
           # Install basic tools
+          dnf config-manager --set-enabled crb
+          dnf install epel-release
+          dnf makecache
+          dnf update -y
           dnf install -y wget git gcc gcc-c++ make cmake rpm-build rpmdevtools
 
           # Add PostgreSQL repository
